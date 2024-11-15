@@ -437,16 +437,19 @@ class TestCase(tf.test.TestCase, parameterized.TestCase):
     ):
         """Run basic tests for a backbone, including compilation."""
         backbone = cls(**init_kwargs)
+
         # Check serialization (without a full save).
         self.run_serialization_test(backbone)
-
+        print('test1')
         # Call model eagerly.
-        output = backbone(input_data)
+        output = backbone(**input_data)
+        print('test1.1')
         if isinstance(expected_output_shape, dict):
             for key in expected_output_shape:
                 self.assertEqual(output[key].shape, expected_output_shape[key])
         else:
             self.assertEqual(output.shape, expected_output_shape)
+        print('test2')
         if backbone.token_embedding is not None:
             # Check we can embed tokens eagerly.
             output = backbone.token_embedding(ops.zeros((2, 3), dtype="int32"))
@@ -463,20 +466,21 @@ class TestCase(tf.test.TestCase, parameterized.TestCase):
                 ]
             for batch in variable_length_data:
                 backbone(batch)
-
+        print('test3')
         # Check compiled predict function.
         backbone.predict(input_data)
         # Convert to numpy first, torch GPU tensor -> tf.data will error.
         numpy_data = tree.map_structure(ops.convert_to_numpy, input_data)
+        print('test4')
         # Create a dataset.
         input_dataset = tf.data.Dataset.from_tensor_slices(numpy_data).batch(2)
         backbone.predict(input_dataset)
-
+        print('test5')
         # Check name maps to classname.
         name = re.sub("(.)([A-Z][a-z]+)", r"\1_\2", cls.__name__)
         name = re.sub("([a-z])([A-Z])", r"\1_\2", name).lower()
         self.assertRegexpMatches(backbone.name, name)
-
+        print('test6')
         # Check mixed precision.
         if run_mixed_precision_check:
             self.run_precision_test(cls, init_kwargs, input_data)
