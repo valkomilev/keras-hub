@@ -20,8 +20,12 @@ def timestep_embedding( t,  dim,
         print('t', t)
         t = time_factor * t
         half = dim // 2
-        freqs = keras.ops.exp(-math.log(max_period) * keras.ops.arange(start=0, stop=half, dtype='float32') / half)
-
+        local_range = keras.ops.arange(start=0, stop=half, dtype='float32')
+        local_range = local_range.to('cpu')
+        freqs = keras.ops.exp(-math.log(max_period) * local_range / half)
+        freqs = freqs.to('cpu')
+        print("freqs.device",freqs.device)
+        print("local_range",local_range .device)
         args = t[:, None].float() * freqs[None]
         embedding =  keras.layers.Concatenate(axis=-1)([keras.ops.cos(args), keras.ops.sin(args)])
         if dim % 2:

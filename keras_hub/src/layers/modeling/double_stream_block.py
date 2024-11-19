@@ -22,7 +22,6 @@ class Modulation(keras.layers.Layer):
         self.lin = keras.layers.Dense( self.multiplier * dim)
 
     def forward(self, vec) :
-        print('vec',vec.shape)
         out = self.lin(ops.silu(vec))[:, None, :].chunk(self.multiplier, dim=-1)
 
         return (
@@ -43,11 +42,9 @@ class RMSNorm(keras.layers.Layer):
     def forward(self, x):
         x_dtype = x.dtype
         x = x.float()
-        print('x', x.shape)
         rrms = ops.rsqrt(ops.mean(x**2, axis=-1) + 1e-6)
         rrms = keras.layers.Reshape(( rrms.shape[1], rrms.shape[2], 1))(rrms)
-        print('x',x.shape)
-        print('rrms', rrms.shape)
+
         return (x * rrms).to(dtype=x_dtype) * self.scale
 
 class QKNorm(keras.layers.Layer):
@@ -151,7 +148,7 @@ class DoubleStreamBlock(keras.layers.Layer):
         self.img_norm1 = keras.layers.LayerNormalization(0,  epsilon=1e-6)
         self.img_attn = SelfAttention(dim=self.hidden_size, num_heads=self.num_heads, qkv_bias=self.qkv_bias)
 
-        self.img_norm2 = keras.layers.LayerNormalization(self.hidden_size, epsilon=1e-6)
+        self.img_norm2 = keras.layers.LayerNormalization(0, epsilon=1e-6)
         self.img_mlp = keras.Sequential([
             keras.layers.Dense( mlp_hidden_dim),
             keras.layers.Dense( mlp_hidden_dim,activation="tanh"),
@@ -162,7 +159,7 @@ class DoubleStreamBlock(keras.layers.Layer):
         self.txt_norm1 = keras.layers.LayerNormalization(-1, epsilon=1e-6)#self.hidden_size
         self.txt_attn = SelfAttention(dim=self.hidden_size, num_heads=self.num_heads, qkv_bias=self.qkv_bias)
 
-        self.txt_norm2 = keras.layers.LayerNormalization(self.hidden_size, epsilon=1e-6)
+        self.txt_norm2 = keras.layers.LayerNormalization(0, epsilon=1e-6)
         self.txt_mlp = keras.Sequential([
             keras.layers.Dense(mlp_hidden_dim),
             keras.layers.Dense( mlp_hidden_dim,activation="tanh"),
@@ -175,15 +172,12 @@ class DoubleStreamBlock(keras.layers.Layer):
 
         # prepare image for attention
         img_modulated = self.img_norm1(img)
-        print("img",img.shape)
-        print(img_modulated.shape)
-        print("img_mod1.shift",img_mod1.shift.shape)
+
         img_modulated = (1 + img_mod1.scale) * img_modulated + img_mod1.shift
         img_qkv = self.img_attn.qkv(img_modulated)
         img_q, img_k, img_v = rearrange(img_qkv, "B L (K H D) -> K B H L D", K=3, H=self.num_heads)
         img_q, img_k = self.img_attn.norm(img_q, img_k, img_v)
 
-        print('txt',txt.shape)
         # prepare txt for attention
         txt_modulated = self.txt_norm1(txt)
         txt_modulated = (1 + txt_mod1.scale) * txt_modulated + txt_mod1.shift
@@ -201,6 +195,7 @@ class DoubleStreamBlock(keras.layers.Layer):
 
         # calculate the img bloks
         img = img + img_mod1.gate * self.img_attn.proj(img_attn)
+        self.img_norm2(img)
         img = img + img_mod2.gate * self.img_mlp((1 + img_mod2.scale) * self.img_norm2(img) + img_mod2.shift)
 
         # calculate the txt bloks

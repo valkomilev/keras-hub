@@ -1,3 +1,5 @@
+import os
+os.environ["CUDA_VISIBLE_DEVICES"] = ''
 import keras
 
 from keras_hub.src.api_export import keras_hub_export
@@ -151,12 +153,12 @@ class FluxBackbone(Backbone):
             ]
        # )
 
-        self.single_blocks = keras.Sequential(
-            [
+        self.single_blocks = [#keras.Sequential(
+
                 SingleStreamBlock(self.hidden_size, self.num_heads, mlp_ratio=self.mlp_ratio)
                 for _ in range(self.depth_single_blocks)
             ]
-        )
+        #)
 
         self.final_layer = LastLayer(self.hidden_size, 1, self.out_channels)
 
@@ -174,16 +176,52 @@ class FluxBackbone(Backbone):
 
             # running on sequences img
         img = self.img_in(img)
+        timestep_embedding(timesteps, 256)
         vec = self.time_in(timestep_embedding(timesteps, 256))
         #TODO: problem with the guidance not being a list
         #if self.guidance_embed:
         #    if guidance is None:
         #        raise ValueError("Didn't get guidance strength for guidance distilled model.")
         #    vec = vec + self.guidance_in(timestep_embedding(guidance, 256))
-        print('vec',vec.shape)
-        print('timesteps',timesteps)
-        print('y',y.shape)
-        print("self.vector_in(y)",self.vector_in(y).shape)
+
+        vec = vec + self.vector_in(y)
+        txt = self.txt_in(txt)
+
+        ids = keras.layers.Concatenate( axis=1)((txt_ids, img_ids))
+        pe = self.pe_embedder(ids)
+
+        for block in self.double_blocks:
+            img, txt = block(img=img, txt=txt, vec=vec, pe=pe)
+
+        img = keras.layers.Concatenate(axis= 1)((txt, img))
+        for block in self.single_blocks:
+            img = block(img, vec=vec, pe=pe)
+        img = img[:, txt.shape[1]:, ...]
+
+        img = self.final_layer(img, vec)  # (N, T, patch_size ** 2 * out_channels)
+        return img
+
+    def predict(        self,
+        img,
+        img_ids,
+        txt,
+        txt_ids,
+        timesteps,
+        y,
+        guidance):
+        if img.ndim != 3 or txt.ndim != 3:
+            raise ValueError("Input img and txt tensors must have 3 dimensions.")
+
+            # running on sequences img
+        img = self.img_in(img)
+        timestep_embedding(timesteps, 256)
+        vec = self.time_in(timestep_embedding(timesteps, 256))
+        #TODO: problem with the guidance not being a list
+        #if self.guidance_embed:
+        #    if guidance is None:
+        #        raise ValueError("Didn't get guidance strength for guidance distilled model.")
+        #    vec = vec + self.guidance_in(timestep_embedding(guidance, 256))
+
         vec = vec + self.vector_in(y)
         txt = self.txt_in(txt)
 
